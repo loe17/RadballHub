@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build Output
+frontend/dist/
+*.log
+
+# Sensitive Server Configurations
+backend/api/config.local.php
+.env
+.env.local
+
+# Server Uploads (Niemals hochgeladene Bilder im Git überschreiben)
+backend/storage/uploads/exercises/*
+!backend/storage/uploads/exercises/.gitkeep
+
+# OS / IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

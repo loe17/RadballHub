@@ -1,0 +1,43 @@
+# =============================================================================
+# RadballHub - Apache .htaccess für Netcup Webhosting 1000
+# =============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # 1. API-Anfragen an den zentralen Router übergeben
+    RewriteRule ^api/(.*)$ api/index.php [L,QSA]
+    RewriteRule ^api$ api/index.php [L,QSA]
+
+    # 2. Dateiuploads aus dem Storage-Verzeichnis direkt ausliefern
+    RewriteRule ^storage/uploads/(.*)$ storage/uploads/$1 [L]
+
+    # 3. Physisch existierende Dateien direkt bedienen (Assets, CSS, JS, Bilder)
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # 4. Single-Page-Application Fallback (React Router)
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# Sicherheit: PHP-Dateien in Upload-Ordnern blockieren
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.(php|phtml|php3|php4|php5|php7|phps|cgi|pl)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Gzip-Komprimierung für Assets
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain text/html text/xml text/css application/xml application/xhtml+xml application/rss+xml application/javascript application/x-javascript application/json
+</IfModule>
