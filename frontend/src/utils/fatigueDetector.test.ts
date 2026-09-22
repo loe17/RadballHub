@@ -39,8 +39,7 @@ const itemsCollision: TrainingPlanItem[] = [
 
 const warnings1 = analyzeFatigueConflicts(itemsCollision, 60);
 if (warnings1.length !== 1 || warnings1[0].severity !== 'critical') {
-  console.error('❌ Test 1 fehlgeschlagen!');
-  process.exit(1);
+  throw new Error('❌ Test 1 fehlgeschlagen!');
 }
 console.log('✅ Test 1 (Direkte primäre Kollision) erfolgreich bestanden:', warnings1[0].message);
 
@@ -82,8 +81,7 @@ const itemsNoCollision: TrainingPlanItem[] = [
 
 const warnings2 = analyzeFatigueConflicts(itemsNoCollision, 60);
 if (warnings2.length !== 0) {
-  console.error('❌ Test 2 fehlgeschlagen!');
-  process.exit(1);
+  throw new Error('❌ Test 2 fehlgeschlagen!');
 }
 console.log('✅ Test 2 (Keine Kollision) erfolgreich bestanden.');
 
@@ -125,8 +123,7 @@ const itemsSecondary: TrainingPlanItem[] = [
 
 const warnings3 = analyzeFatigueConflicts(itemsSecondary, 60);
 if (warnings3.length !== 1 || warnings3[0].severity !== 'moderate') {
-  console.error('❌ Test 3 fehlgeschlagen!');
-  process.exit(1);
+  throw new Error('❌ Test 3 fehlgeschlagen!');
 }
 console.log('✅ Test 3 (Sekundäre Vorbelastung bei kurzer Pause) erfolgreich bestanden:', warnings3[0].message);
 
