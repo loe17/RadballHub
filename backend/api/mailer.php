@@ -61,7 +61,7 @@ function sendAdminNewSubmissionEmail(string $exerciseTitle, int $exerciseId, ?st
                 <p style='margin: 5px 0 0 0; color: #666;'>ID: #$exerciseId $authorText</p>
             </div>
             <p>Bitte prüfe die Übung im Administrationsbereich:</p>
-            <p><a href='https://deinedomain.de/#/admin/moderation' style='display: inline-block; background: #2563eb; color: #fff; padding: 10px 18px; text-decoration: none; border-radius: 5px;'>Zur Review-Ansicht</a></p>
+            <p><a href='https://radballhub.rve1922.de/#/admin/moderation' style='display: inline-block; background: #2563eb; color: #fff; padding: 10px 18px; text-decoration: none; border-radius: 5px;'>Zur Review-Ansicht</a></p>
         </div>
     ";
 
@@ -97,7 +97,7 @@ function sendStatusNotificationEmail(string $userEmail, string $userName, string
             <p>der Status deiner eingereichten Übung <strong>" . htmlspecialchars($exerciseTitle) . "</strong> wurde aktualisiert:</p>
             <p style='font-size: 16px; font-weight: bold; color: $color;'>Status: $statusText</p>
             $reasonHtml
-            <p><a href='https://deinedomain.de/#/catalog' style='display: inline-block; background: #2563eb; color: #fff; padding: 10px 18px; text-decoration: none; border-radius: 5px;'>Zum Übungskatalog</a></p>
+            <p><a href='https://radballhub.rve1922.de/#/catalog' style='display: inline-block; background: #2563eb; color: #fff; padding: 10px 18px; text-decoration: none; border-radius: 5px;'>Zum Übungskatalog</a></p>
             <p style='color: #888; font-size: 12px; margin-top: 30px;'>RadballHub Trainingsplattform</p>
         </div>
     ";

@@ -51,7 +51,7 @@ jobs:
           username: ${{ secrets.NETCUP_FTP_USER }}
           password: ${{ secrets.NETCUP_FTP_PASSWORD }}
           local-dir: ./deploy_pkg/
-          server-dir: httpdocs/
+          server-dir: radballhub.rve1922.de/httpdocs/
           dangerous-clean-slate: false
           exclude: |
             **/.git*
