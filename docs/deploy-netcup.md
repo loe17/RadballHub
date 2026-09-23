@@ -1,9 +1,10 @@
 # Deployment & Update-Leitfaden: Netcup Webhosting 1000
 
 Diese Anleitung erklärt:
-1. Wie du die Plattform jetzt erstmals veröffentlichst.
-2. Was die `deploy.yml` für GitHub Actions ist und wie sie funktioniert.
-3. Wie du später Updates einspielst, **ohne** vorhandene Benutzerdaten, Trainingspläne oder hochgeladene Bilder zu gefährden.
+1. Wie du die Plattform erstmals veröffentlichst.
+2. Was die automatische Veröffentlichung (GitHub Actions) ist und wie sie funktioniert.
+3. Wie du bestehende Installationen aktualisierst (Datenbank-Aktualisierung), ohne vorhandene Daten zu verlieren.
+4. Wie Benutzerkonten, Rollen und die Datensicherung verwaltet werden.
 
 ---
 
@@ -11,103 +12,109 @@ Diese Anleitung erklärt:
 
 ### Schritt 1: Plesk vorbereiten
 1. **PHP-Version:** In Plesk unter *Websites & Domains > PHP-Einstellungen* auf `PHP 8.2` oder `8.3` stellen (`memory_limit = 512M`).
-2. **Datenbank anlegen:** Unter *Datenbanken* eine MariaDB/MySQL-Datenbank erstellen (z. B. `k12345_radballhub`) samt Benutzer und Passwort.
-3. **Tabellen importieren:** In phpMyAdmin die Datei `backend/database/schema.sql` und optional `backend/database/seeders.sql` importieren.
-4. **E-Mail-Postfach:** Unter *E-Mail* das Postfach `noreply@deinedomain.de` anlegen.
+2. **Datenbank anlegen:** Unter *Datenbanken* eine MariaDB/MySQL-Datenbank erstellen samt Benutzer und Passwort.
+3. **Tabellen importieren:** In phpMyAdmin die Datei `backend/database/schema.sql` und `backend/database/seeders.sql` importieren.
+4. **E-Mail-Postfach:** Unter *E-Mail* das Postfach (z. B. `benachrichtigungen@rve1922.de`) anlegen.
 
-### Schritt 2: Echte Passwörter schützen (`config.local.php`)
+### Schritt 2: Zugangsdaten hinterlegen (`config.local.php`)
 Erstelle auf dem Server im Ordner `/httpdocs/api/` eine Datei namens `config.local.php` (siehe Vorlage `backend/api/config.local.example.php`):
 ```php
 <?php
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'k12345_radballhub');
-define('DB_USER', 'k12345_radball_user');
-define('DB_PASS', 'DeinSicheresPasswortAusPlesk');
+define('DB_NAME', 'deine_datenbank');
+define('DB_USER', 'dein_benutzer');
+define('DB_PASS', 'DeinPasswort');
 
 define('SMTP_HOST', 'mail.deinedomain.de');
 define('SMTP_PORT', 465); // SSL
-define('SMTP_USER', 'noreply@deinedomain.de');
-define('SMTP_PASS', 'DeinMailPasswortAusPlesk');
+define('SMTP_USER', 'benachrichtigungen@deinedomain.de');
+define('SMTP_PASS', 'DeinMailPasswort');
 define('ADMIN_EMAIL', 'admin@deinedomain.de');
 ```
-> [!IMPORTANT]
-> **Warum `config.local.php`?** Diese Datei steht in der `.gitignore`. Sie wird bei zukünftigen Updates oder Git-Deployments **niemals überschrieben**. Deine echten Zugangsdaten bleiben dauerhaft sicher auf dem Netcup-Server gespeichert!
+
+Diese Datei wird bei zukünftigen Updates niemals überschrieben. Deine Zugangsdaten bleiben dauerhaft auf dem Server geschützt.
 
 ### Schritt 3: Manuelles Hochladen (Alternative zu GitHub Actions)
-Falls du nicht sofort GitHub nutzen möchtest:
+Falls du Dateien direkt per FTP hochladen möchtest:
 1. Baue das Frontend lokal:
    ```bash
    cd frontend
    npm run build
    ```
-2. Lade per FileZilla / WinSCP in den Netcup-Ordner `/httpdocs/` hoch:
-   - Den Inhalt von `frontend/dist/*` direkt nach `/httpdocs/` (`index.html`, `assets/`)
-   - Den Ordner `backend/api/` nach `/httpdocs/api/`
-   - Die Datei `backend/.htaccess` nach `/httpdocs/.htaccess`
-   - Lege den Ordner an: `/httpdocs/storage/uploads/exercises/` (Berechtigung `0755`)
+2. Lade per FTP-Programm (z. B. FileZilla) in das Verzeichnis der Subdomain bzw. `/httpdocs/` hoch:
+   - Den Inhalt von `frontend/dist/` (`index.html`, Ordner `assets/`)
+   - Den Ordner `backend/api/` nach `/api/`
+   - Die Datei `backend/.htaccess` als `.htaccess`
+   - Lege den Ordner an: `/storage/uploads/exercises/` (Berechtigung `755`)
 
 ---
 
-## 2. Was ist die `deploy.yml` für GitHub?
+## 2. Automatische Veröffentlichung mit GitHub Actions
 
-Die Datei `.github/workflows/deploy.yml` ist ein automatisches **CI/CD-Skript (Continuous Deployment)** für GitHub Actions:
+Die Datei `.github/workflows/deploy.yml` baut bei jedem Speichern auf GitHub die Anwendung und überträgt sie automatisch auf den Netcup-Server:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Dev as Du (Lokaler Rechner)
-    participant GH as GitHub Repository
-    participant Runner as GitHub Actions Runner (Cloud)
-    participant Netcup as Netcup Webhosting 1000
+1. Gehe in deinem GitHub-Repository auf:
+   **Settings > Secrets and variables > Actions > New repository secret**
+2. Lege folgende 3 Zugänge an:
+   - `NETCUP_FTP_HOST`: Die Serveradresse (z. B. `hosting162160.a2fef.netcup.net` oder die IP-Adresse).
+   - `NETCUP_FTP_USER`: Dein FTP-Benutzername aus Plesk.
+   - `NETCUP_FTP_PASSWORD`: Dein FTP-Passwort.
+3. Sobald neue Änderungen in den Hauptzweig (`main`) übertragen werden, baut GitHub die Anwendung und überträgt nur die Programmdateien. Deine hochgeladenen Bilder und die Datenbank bleiben unangetastet.
 
-    Dev->>GH: git push origin main
-    GH->>Runner: Startet Workflow (.github/workflows/deploy.yml)
-    Note over Runner: 1. Lädt Code herunter<br/>2. Führt "npm run build" aus<br/>3. Bündelt API + Frontend
-    Runner->>Netcup: Überträgt geänderte Dateien per SFTP/FTP
-    Note over Netcup: Aktualisiert nur Web-Assets & API-Dateien.<br/>Vorhandene Bilder & DB bleiben unangetastet!
+---
+
+## 3. Bestehende Datenbank aktualisieren (Update von früheren Versionen)
+
+Wenn du die Plattform bereits installiert hast und auf die neue Version mit der Kategorie **Ausdauer** und **mehreren Bildern/Videos pro Übung** umstellst, führe folgenden Befehl einmalig in **phpMyAdmin** unter dem Reiter **SQL** aus:
+
+```sql
+-- 1. Neue Kategorie "Ausdauer" zu Übungen hinzufügen:
+ALTER TABLE exercises MODIFY category ENUM('technik', 'taktik', 'kondition', 'ausdauer', 'home_workout', 'zirkel') NOT NULL;
+
+-- 2. Neue Tabelle für mehrere Bilder und Videos pro Übung anlegen:
+CREATE TABLE IF NOT EXISTS exercise_media (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  exercise_id BIGINT UNSIGNED NOT NULL,
+  type ENUM('image', 'video') NOT NULL DEFAULT 'image',
+  url VARCHAR(500) NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  caption VARCHAR(255) NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_media_exercise FOREIGN KEY (exercise_id) REFERENCES exercises (id) ON DELETE CASCADE,
+  INDEX idx_media_order (exercise_id, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-### Wie richtest du GitHub Actions ein?
-1. Lade dein Projekt in ein (privates) GitHub Repository hoch.
-2. Gehe in deinem GitHub-Repository auf:
-   **Settings > Secrets and variables > Actions > New repository secret**
-3. Lege folgende 3 Secrets an:
-   * `NETCUP_FTP_HOST`: Der FTP-Host aus deiner Netcup-Plesk-Übersicht (z. B. `hostingXXXXX.a2xxx.netcup.net` oder `ftp.deinedomain.de`).
-   * `NETCUP_FTP_USER`: Dein FTP-Benutzername aus Plesk.
-   * `NETCUP_FTP_PASSWORD`: Dein FTP-Passwort.
-4. **Fertig!** Sobald du nun Änderungen mit `git push` hochlädst, baut GitHub dein Frontend automatisch und synchronisiert nur die neuen Dateien auf den Netcup-Server.
+Bestehende Übungen und Bilder bleiben dabei vollständig erhalten.
 
 ---
 
-## 3. Wie spiele ich später Updates ein, OHNE vorhandene Daten zu beschädigen?
+## 4. Benutzerverwaltung, Rollen und Anmeldung
 
-Beim Betrieb einer produktiven Webanwendung gibt es **drei Bereiche mit Daten**, die niemals beschädigt werden dürfen:
+### Standard-Administrator
+Nach dem Import von `seeders.sql` existiert ein initialer Administrator:
+- **E-Mail:** `admin@radballhub.de`
+- **Passwort:** `Radball2026!`
 
-### A. Die Datenbank (Übungen, Benutzer, gespeicherte Trainingspläne)
-* **Die goldene Regel:** Führe im Live-Betrieb **niemals** erneut `schema.sql` oder `DROP TABLE` aus!
-* **Wie macht man DB-Änderungen richtig?**
-  Wenn in einem späteren Update z. B. ein neues Tabellenfeld benötigt wird, erstelle ein kleines Migrationsskript mit `ALTER TABLE`:
-  ```sql
-  -- Beispiel für ein späteres Update:
-  ALTER TABLE exercises ADD COLUMN video_start_seconds INT NULL DEFAULT 0;
-  ```
-  Dieses Skript führst du in phpMyAdmin aus. Alle bestehenden Datensätze bleiben zu 100 % erhalten.
+Nach der ersten Anmeldung kannst du dieses Konto nutzen oder dir ein eigenes Konto erstellen und zum Administrator ernennen.
 
-### B. Die hochgeladenen Bilder (`storage/uploads/exercises/`)
-* In unserer `deploy.yml` ist die Option `dangerous-clean-slate: false` gesetzt. Das bedeutet: Der Deployment-Prozess löscht auf dem Server **niemals** Dateien, die dort von Nutzern hochgeladen wurden.
-* Zudem ist dieser Ordner in der Root-`.gitignore` eingetragen, damit lokale Testbilder nicht die Bilder auf dem Server überschreiben.
-
-### C. Die Konfiguration & Passwörter (`api/config.local.php`)
-* Da deine echten Passwörter in `config.local.php` auf dem Server liegen und diese Datei in der `.gitignore` ignoriert wird, fasst kein Git-Update deine Zugangsdaten an.
+### Registrierung und Rollen
+- Jeder Trainer und jedes Vereinsmitglied kann sich über den Button **Anmelden / Registrieren** oben rechts selbst ein Konto erstellen.
+- Neue Konten erhalten standardmäßig die Rolle **Trainer**. Trainer können Übungen einreichen, eigene Trainingspläne zusammenstellen und drucken.
+- **Administrator-Rechte:** Nur angemeldete Administratoren sehen oben rechts den Button **Verwaltung**.
+- In der Verwaltung kann der Administrator:
+  - Allen registrierten Benutzern neue Rollen zuweisen (z. B. ein Mitglied zum Administrator befördern).
+  - Der letzte verbleibende Administrator kann sich nicht selbst die Rechte entziehen, damit der Zugang immer gesichert bleibt.
 
 ---
 
-## 4. Sicherheits-Checkliste vor jedem größeren Update
+## 5. Datensicherung (Backup & Wiederherstellung)
 
-1. **Plesk Backup-Manager nutzen:**
-   - In Plesk auf **Websites & Domains > Backup-Manager** gehen.
-   - Auf **Sichern** klicken (dauert ca. 30 Sekunden). Netcup erstellt einen Snapshot der Datenbank und aller Dateien.
-2. **Katalog-Backup in RadballHub herunterladen:**
-   - Klicke im Menü von RadballHub einfach auf **"Katalog-Backup (ZIP)"**. Du erhältst sofort eine lokale Sicherheitskopie aller Übungen und Bilddateien.
-3. **Code aktualisieren:**
-   - Git push durchführen oder neue `frontend/dist`-Dateien hochladen.
+Die Datensicherung ist ausschließlich für Administratoren zugänglich, um unbefugte Exporte zu verhindern:
+
+1. Melde dich als Administrator an und klicke oben rechts auf **Verwaltung**.
+2. **Katalog-Backup herunterladen (ZIP):**
+   Erstellt eine vollständige Sicherung aller Übungen (als JSON- und CSV-Datei) sowie aller hochgeladenen Übungsbilder in einer praktischen ZIP-Datei auf deinem Computer.
+3. **Katalog wiederherstellen (JSON):**
+   Ermöglicht das Einspielen einer zuvor gesicherten `exercises.json`-Datei, um Übungen bei Bedarf wiederherzustellen.
+

@@ -7,6 +7,11 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/exercises.php';
 
 function handleExportZip(): void {
+    $currentUser = getAuthenticatedUser();
+    if (!$currentUser || $currentUser['role'] !== 'admin') {
+        jsonError('Zugriff verweigert: Nur Administratoren dürfen Datensicherungen exportieren.', 403);
+    }
+
     $db = getDbConnection();
 
     // Time-Limit defensiv anpassen für Shared Hosting
@@ -125,4 +130,116 @@ function handleExportZip(): void {
 
     @unlink($tempZipPath);
     exit;
+}
+
+/**
+ * Übungskatalog aus Sicherung importieren (Nur Admin)
+ */
+function handleImportBackup(array $requestData): void {
+    $currentUser = getAuthenticatedUser();
+    if (!$currentUser || $currentUser['role'] !== 'admin') {
+        jsonError('Zugriff verweigert: Nur Administratoren dürfen Datensicherungen importieren.', 403);
+    }
+
+    $db = getDbConnection();
+
+    $exercises = [];
+    if (!empty($_FILES['backup_file']['tmp_name'])) {
+        $fileContent = file_get_contents($_FILES['backup_file']['tmp_name']);
+        $parsed = json_decode($fileContent, true);
+        $exercises = $parsed['exercises'] ?? [];
+    } elseif (!empty($requestData['exercises']) && is_array($requestData['exercises'])) {
+        $exercises = $requestData['exercises'];
+    }
+
+    if (empty($exercises)) {
+        jsonError('Keine gültigen Übungsdaten in der Sicherungsdatei gefunden.', 422);
+    }
+
+    $importedCount = 0;
+    $db->beginTransaction();
+    try {
+        foreach ($exercises as $ex) {
+            $title = trim($ex['title'] ?? '');
+            if (empty($title)) continue;
+
+            $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $title))) . '-' . substr(uniqid(), -4);
+            $author = !empty($ex['author']) && $ex['author'] !== 'k. A.' ? trim($ex['author']) : (!empty($ex['author_name']) ? trim($ex['author_name']) : null);
+            $cat = in_array($ex['category'] ?? '', ['technik', 'taktik', 'kondition', 'ausdauer', 'home_workout', 'zirkel'], true) ? $ex['category'] : 'technik';
+            $duration = (int)($ex['duration_minutes'] ?? 5);
+            $material = trim($ex['material'] ?? '');
+            $desc = trim($ex['description'] ?? '');
+            $imagePath = $ex['image_path'] ?? null;
+            $videoUrl = $ex['video_url'] ?? null;
+
+            $stmt = $db->prepare("
+                INSERT INTO exercises (
+                    title, slug, author_name, category, duration_minutes,
+                    material, description, image_path, video_url, status, created_by_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)
+            ");
+            $stmt->execute([
+                $title, $slug, $author, $cat, $duration,
+                $material, $desc, $imagePath, $videoUrl, $currentUser['id']
+            ]);
+            $newExerciseId = (int)$db->lastInsertId();
+
+            // Altersklassen zuordnen
+            if (!empty($ex['age_groups']) && is_array($ex['age_groups'])) {
+                foreach ($ex['age_groups'] as $ag) {
+                    $agLabel = is_array($ag) ? ($ag['label'] ?? '') : $ag;
+                    $findAg = $db->prepare("SELECT id FROM age_groups WHERE label = ? OR code = ? LIMIT 1");
+                    $findAg->execute([$agLabel, $agLabel]);
+                    $agId = $findAg->fetchColumn();
+                    if ($agId) {
+                        $db->prepare("INSERT IGNORE INTO exercise_age_group_assignments (exercise_id, age_group_id) VALUES (?, ?)")
+                           ->execute([$newExerciseId, $agId]);
+                    }
+                }
+            }
+
+            // Muskelgruppen zuordnen
+            if (!empty($ex['muscle_groups']) && is_array($ex['muscle_groups'])) {
+                foreach ($ex['muscle_groups'] as $mg) {
+                    $mgName = is_array($mg) ? ($mg['name'] ?? '') : $mg;
+                    $intensity = is_array($mg) ? ($mg['intensity'] ?? 'primary') : 'primary';
+                    $findMg = $db->prepare("SELECT id FROM muscle_groups WHERE name LIKE ? OR code = ? LIMIT 1");
+                    $findMg->execute(['%' . $mgName . '%', $mgName]);
+                    $mgId = $findMg->fetchColumn();
+                    if ($mgId) {
+                        $db->prepare("INSERT IGNORE INTO exercise_muscle_group (exercise_id, muscle_group_id, intensity) VALUES (?, ?, ?)")
+                           ->execute([$newExerciseId, $mgId, $intensity]);
+                    }
+                }
+            }
+
+            // Zirkel
+            if (!empty($ex['circuit']) && is_array($ex['circuit'])) {
+                $c = $ex['circuit'];
+                $db->prepare("
+                    INSERT INTO exercise_circuits (exercise_id, work_duration_seconds, pause_duration_seconds, rounds, station_number, setup_notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ")->execute([
+                    $newExerciseId,
+                    (int)($c['work_duration_seconds'] ?? 45),
+                    (int)($c['pause_duration_seconds'] ?? 15),
+                    (int)($c['rounds'] ?? 3),
+                    $c['station_number'] ?? null,
+                    $c['setup_notes'] ?? null,
+                ]);
+            }
+
+            $importedCount++;
+        }
+        $db->commit();
+
+        jsonResponse([
+            'success'  => true,
+            'message'  => "Erfolgreich {$importedCount} Übungen importiert.",
+            'imported' => $importedCount,
+        ]);
+    } catch (\Throwable $e) {
+        $db->rollBack();
+        jsonError('Fehler beim Importieren: ' . $e->getMessage(), 500);
+    }
 }

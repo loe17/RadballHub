@@ -1,6 +1,25 @@
-export type ExerciseCategory = 'technik' | 'taktik' | 'kondition' | 'home_workout' | 'zirkel';
+export type ExerciseCategory = 'technik' | 'taktik' | 'kondition' | 'ausdauer' | 'home_workout' | 'zirkel';
 
 export type ExerciseStatus = 'draft' | 'pending_review' | 'approved' | 'rejected';
+
+export type UserRole = 'admin' | 'coach' | 'member';
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface ExerciseMedia {
+  id?: number;
+  type: 'image' | 'video';
+  url: string;
+  sort_order: number;
+  caption?: string | null;
+}
 
 export interface AgeGroup {
   id: number;
@@ -37,6 +56,7 @@ export interface Exercise {
   description: string;
   image_path?: string | null;
   video_url?: string | null;
+  media?: ExerciseMedia[];
   status: ExerciseStatus;
   created_at?: string;
   circuit?: CircuitMetadata | null;

@@ -90,6 +90,37 @@ function handleCors(): void {
 }
 
 /**
+ * Sichere Session initialisieren
+ */
+function startSessionIfNeeded(): void {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_set_cookie_params([
+            'lifetime' => 86400 * 30,
+            'path'     => '/',
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+        session_start();
+    }
+}
+
+/**
+ * Aktuell eingeloggten Benutzer ermitteln
+ */
+function getAuthenticatedUser(): ?array {
+    startSessionIfNeeded();
+    if (!empty($_SESSION['user_id'])) {
+        return [
+            'id'    => (int)$_SESSION['user_id'],
+            'name'  => $_SESSION['user_name'] ?? '',
+            'email' => $_SESSION['user_email'] ?? '',
+            'role'  => $_SESSION['user_role'] ?? 'member',
+        ];
+    }
+    return null;
+}
+
+/**
  * WebP-Bildkonvertierung mit automatischer Größenanpassung
  * Nutzt GD oder Imagick (standardmäßig auf Netcup aktiv)
  */

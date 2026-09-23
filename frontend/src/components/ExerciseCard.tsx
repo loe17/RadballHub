@@ -1,5 +1,4 @@
-import React from 'react';
-import { Clock, User, Plus, Check, Printer, Eye, Zap } from 'lucide-react';
+import { Clock, User, Plus, Check, Printer, Eye, Zap, Image as ImageIcon } from 'lucide-react';
 import type { Exercise } from '../types';
 import { useTrainingPlanStore } from '../store/useTrainingPlanStore';
 
@@ -13,6 +12,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; label: string 
   technik: { bg: 'bg-blue-100 dark:bg-blue-950/60', text: 'text-blue-700 dark:text-blue-300', label: 'Technik' },
   taktik: { bg: 'bg-indigo-100 dark:bg-indigo-950/60', text: 'text-indigo-700 dark:text-indigo-300', label: 'Taktik' },
   kondition: { bg: 'bg-amber-100 dark:bg-amber-950/60', text: 'text-amber-800 dark:text-amber-300', label: 'Kondition' },
+  ausdauer: { bg: 'bg-teal-100 dark:bg-teal-950/60', text: 'text-teal-800 dark:text-teal-300', label: 'Ausdauer' },
   home_workout: { bg: 'bg-emerald-100 dark:bg-emerald-950/60', text: 'text-emerald-700 dark:text-emerald-300', label: 'Home-Workout' },
   zirkel: { bg: 'bg-purple-100 dark:bg-purple-950/60', text: 'text-purple-700 dark:text-purple-300', label: 'Zirkelübung' },
 };
@@ -60,6 +60,16 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             {exercise.duration_minutes} Min.
           </span>
         </div>
+
+        {/* Medienanzahl falls mehrere Medien */}
+        {exercise.media && exercise.media.length > 1 && (
+          <div className="absolute bottom-2 right-2">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-900/75 text-white backdrop-blur-md shadow">
+              <ImageIcon className="w-3 h-3" />
+              {exercise.media.length} Medien
+            </span>
+          </div>
+        )}
 
         {/* Zirkel-Hinweis falls Kategorie Zirkel */}
         {exercise.circuit && (

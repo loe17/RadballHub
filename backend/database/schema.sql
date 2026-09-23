@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS `exercises` (
   `title` VARCHAR(255) NOT NULL,
   `slug` VARCHAR(255) NOT NULL UNIQUE,
   `author_name` VARCHAR(191) NULL DEFAULT NULL,
-  `category` ENUM('technik', 'taktik', 'kondition', 'home_workout', 'zirkel') NOT NULL,
+  `category` ENUM('technik', 'taktik', 'kondition', 'ausdauer', 'home_workout', 'zirkel') NOT NULL,
   `duration_minutes` INT UNSIGNED NOT NULL DEFAULT 5,
   `material` VARCHAR(500) NULL DEFAULT NULL,
   `description` MEDIUMTEXT NOT NULL,
@@ -111,6 +111,21 @@ CREATE TABLE IF NOT EXISTS `exercise_muscle_group` (
   CONSTRAINT `fk_emg_exercise` FOREIGN KEY (`exercise_id`) REFERENCES `exercises` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_emg_muscle` FOREIGN KEY (`muscle_group_id`) REFERENCES `muscle_groups` (`id`) ON DELETE CASCADE,
   INDEX `idx_emg_intensity` (`intensity`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------
+-- 7b. Tabelle: exercise_media (Mehrere Bilder / Videos pro Übung mit Sortierung)
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `exercise_media` (
+  `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `exercise_id` BIGINT UNSIGNED NOT NULL,
+  `type` ENUM('image', 'video') NOT NULL DEFAULT 'image',
+  `url` VARCHAR(500) NOT NULL,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `caption` VARCHAR(255) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_media_exercise` FOREIGN KEY (`exercise_id`) REFERENCES `exercises` (`id`) ON DELETE CASCADE,
+  INDEX `idx_media_order` (`exercise_id`, `sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------

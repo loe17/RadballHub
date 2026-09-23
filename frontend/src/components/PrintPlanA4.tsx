@@ -18,7 +18,7 @@ export const PrintPlanA4: React.FC<PrintPlanA4Props> = ({
   totalDurationFormatted,
 }) => {
   return (
-    <div className="print-only hidden print:block text-slate-900 bg-white">
+    <div className="print-container hidden print:block text-slate-900 bg-white">
       
       {/* SEITE 1: Deckblatt & Übersicht / Zeitplan */}
       <div className="a4-print-page bg-white p-8 flex flex-col justify-between box-border">

@@ -2,19 +2,27 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   Filter, 
-  Dumbbell, 
   X, 
-  Zap,
-  RotateCcw
+  RotateCcw,
+  Layers
 } from 'lucide-react';
-import type { Exercise } from './types';
-import { INITIAL_EXERCISES, INITIAL_AGE_GROUPS, INITIAL_MUSCLE_GROUPS } from './services/api';
+import type { Exercise, User } from './types';
+import { 
+  INITIAL_EXERCISES, 
+  INITIAL_AGE_GROUPS, 
+  INITIAL_MUSCLE_GROUPS,
+  fetchExercisesApi,
+  authMeApi,
+  authLogoutApi
+} from './services/api';
 import { Header } from './components/Header';
 import { ExerciseCard } from './components/ExerciseCard';
 import { ExerciseDetailModal } from './components/ExerciseDetailModal';
 import { PlanDrawer } from './components/PlanDrawer';
 import { SavedPlansModal } from './components/SavedPlansModal';
 import { SubmissionModal } from './components/SubmissionModal';
+import { AuthModal } from './components/AuthModal';
+import { AdminModal } from './components/AdminModal';
 import { PrintExerciseA4 } from './components/PrintExerciseA4';
 import { PrintPlanA4 } from './components/PrintPlanA4';
 import { useTrainingPlanStore } from './store/useTrainingPlanStore';
@@ -22,6 +30,11 @@ import { useTrainingPlanStore } from './store/useTrainingPlanStore';
 export function App() {
   const [exercises, setExercises] = useState<Exercise[]>(INITIAL_EXERCISES);
   const [currentTab, setCurrentTab] = useState<'catalog' | 'plans' | 'moderation'>('catalog');
+
+  // Benutzer-Authentifizierung
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
 
   // Filter & Suche
   const [search, setSearch] = useState('');
@@ -37,8 +50,11 @@ export function App() {
   const [singlePrintExercise, setSinglePrintExercise] = useState<Exercise | null>(null);
   const [isPrintingFullPlan, setIsPrintingFullPlan] = useState(false);
 
-  // Darkmode & System Theme
+  // Darkmode & Speicherung im Browser
   const [isDark, setIsDark] = useState<boolean>(() => {
+    const saved = localStorage.getItem('radballhub_theme');
+    if (saved === 'dark') return true;
+    if (saved === 'light') return false;
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
@@ -47,13 +63,36 @@ export function App() {
   const defaultPauseSeconds = useTrainingPlanStore((state) => state.defaultPauseSeconds);
   const getTotalDurationFormatted = useTrainingPlanStore((state) => state.getTotalDurationFormatted);
 
+  // Initialer Datenabruf
+  const loadExercises = () => {
+    fetchExercisesApi().then((data) => {
+      if (data && data.length > 0) {
+        setExercises(data);
+      }
+    });
+  };
+
+  useEffect(() => {
+    loadExercises();
+    authMeApi().then((user) => {
+      setCurrentUser(user);
+    });
+  }, []);
+
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('radballhub_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('radballhub_theme', 'light');
     }
   }, [isDark]);
+
+  const handleLogout = async () => {
+    await authLogoutApi();
+    setCurrentUser(null);
+  };
 
   // Drucken einer einzelnen Übung (DIN-A4 1 Seite)
   const handlePrintSingle = (exercise: Exercise) => {
@@ -76,29 +115,6 @@ export function App() {
   // Neue Übungseingabe hinzufügen
   const handleExerciseSubmitted = (newExercise: Exercise) => {
     setExercises((prev) => [newExercise, ...prev]);
-  };
-
-  // Katalog-Backup als strukturierte JSON/CSV Datei herunterladen
-  const handleDownloadBackup = () => {
-    const backupData = {
-      export_date: new Date().toISOString(),
-      platform: 'RadballHub Trainingsplattform',
-      total_exercises: exercises.length,
-      exercises: exercises.map((ex) => ({
-        ...ex,
-        author: ex.author_name || 'k. A.',
-      })),
-    };
-
-    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `radballhub_katalog_backup_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   // Filter-Reset
@@ -156,38 +172,35 @@ export function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       
-      {/* App Header */}
+      {/* Zentraler Header */}
       <Header
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         openSubmissionModal={() => setIsSubmissionOpen(true)}
         openSavedPlansModal={() => setIsSavedPlansOpen(true)}
-        handleDownloadBackup={handleDownloadBackup}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setIsAuthOpen(true)}
+        onLogout={handleLogout}
+        onOpenAdminModal={() => setIsAdminOpen(true)}
         isDark={isDark}
         setIsDark={setIsDark}
       />
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:hidden">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 print:hidden">
         
-        {/* Banner / Hero */}
-        <div className="mb-8 p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white shadow-xl shadow-blue-900/10">
-          <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/20 backdrop-blur-md mb-3">
-              <Zap className="w-3.5 h-3.5 text-amber-300" />
-              Netcup Webhosting Edition • Modular & Touch-Optimiert
-            </span>
-            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
-              Trainings- & Übungsplattform
-            </h1>
-            <p className="mt-2 text-sm sm:text-base text-blue-100 leading-relaxed">
-              Erstelle strukturierte Radball-Trainingseinheiten, vermeide Überlastungen mit der intelligenten Belastungs-Validierung und drucke jede Übung exakt auf 1 DIN-A4 Seite für die Halle.
-            </p>
-          </div>
+        {/* Schlichter, sachlicher Titelbereich ohne Werbesprüche */}
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+            Radball-Übungskatalog
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Übungen durchsuchen, Trainingspläne zusammenstellen und für das Training in der Halle drucken.
+          </p>
         </div>
 
         {/* Filter- & Suchleiste */}
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mb-8 space-y-4">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs mb-8 space-y-4">
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             {/* Volltextsuche */}
@@ -197,7 +210,7 @@ export function App() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Suche nach Titel, Ablauf, Material oder Autor..."
+                placeholder="Übung, Ablauf, Material oder Autor suchen..."
                 className="w-full text-sm pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-white outline-hidden focus:border-blue-500"
               />
               {search && (
@@ -221,6 +234,7 @@ export function App() {
                 <option value="technik">Technik</option>
                 <option value="taktik">Taktik</option>
                 <option value="kondition">Kondition</option>
+                <option value="ausdauer">Ausdauer</option>
                 <option value="home_workout">Home-Workout</option>
                 <option value="zirkel">Zirkelübung</option>
               </select>
@@ -243,7 +257,7 @@ export function App() {
             </div>
           </div>
 
-          {/* Erweiterte Filter-Zeile: Muskelgruppen & Autor */}
+          {/* Erweiterte Filter-Zeile: Muskelgruppen & Reset */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -299,7 +313,7 @@ export function App() {
         {/* Übungs-Grid */}
         {filteredExercises.length === 0 ? (
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800">
-            <Dumbbell className="w-12 h-12 text-slate-400 mx-auto mb-3 opacity-40" />
+            <Layers className="w-12 h-12 text-slate-400 mx-auto mb-3 opacity-40" />
             <h3 className="font-bold text-base text-slate-900 dark:text-white">
               Keine passenden Übungen gefunden
             </h3>
@@ -353,25 +367,41 @@ export function App() {
         isOpen={isSubmissionOpen}
         onClose={() => setIsSubmissionOpen(false)}
         onExerciseSubmitted={handleExerciseSubmitted}
+        existingExercises={exercises}
+      />
+
+      {/* Anmelde- & Registrierungsmodal */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onLoginSuccess={(u) => setCurrentUser(u)}
+      />
+
+      {/* Administrator-Verwaltungsmodal (Benutzer & Backups) */}
+      <AdminModal
+        isOpen={isAdminOpen}
+        onClose={() => setIsAdminOpen(false)}
+        currentUser={currentUser}
+        onExercisesUpdated={loadExercises}
       />
 
       {/* 
-        DRUCK-CONTAINER (Wird nur im Browser-Druckauftrag @media print gerendert) 
+        DRUCK-CONTAINER (Wird ausschließlich im Browser-Druckauftrag @media print gerendert) 
       */}
-      {singlePrintExercise && (
-        <div className="hidden print:block">
+      <div className="print-container hidden print:block">
+        {singlePrintExercise && (
           <PrintExerciseA4 exercise={singlePrintExercise} />
-        </div>
-      )}
+        )}
 
-      {isPrintingFullPlan && (
-        <PrintPlanA4
-          planTitle={activePlanTitle}
-          items={planItems}
-          defaultPauseSeconds={defaultPauseSeconds}
-          totalDurationFormatted={getTotalDurationFormatted()}
-        />
-      )}
+        {isPrintingFullPlan && (
+          <PrintPlanA4
+            planTitle={activePlanTitle}
+            items={planItems}
+            defaultPauseSeconds={defaultPauseSeconds}
+            totalDurationFormatted={getTotalDurationFormatted()}
+          />
+        )}
+      </div>
 
     </div>
   );

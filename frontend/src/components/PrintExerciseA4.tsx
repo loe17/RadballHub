@@ -6,6 +6,10 @@ interface PrintExerciseA4Props {
 }
 
 export const PrintExerciseA4: React.FC<PrintExerciseA4Props> = ({ exercise }) => {
+  const printImage = (exercise.media && exercise.media.length > 0)
+    ? (exercise.media.find((m) => m.type === 'image')?.url || exercise.image_path)
+    : exercise.image_path;
+
   return (
     <div className="a4-print-page bg-white text-slate-900 p-6 flex flex-col justify-between box-border">
       
@@ -38,9 +42,9 @@ export const PrintExerciseA4: React.FC<PrintExerciseA4Props> = ({ exercise }) =>
 
       {/* 2. Bild / Skizze (Oben platziert) */}
       <div className="print-image-container w-full bg-slate-50 rounded mb-3 flex items-center justify-center overflow-hidden">
-        {exercise.image_path ? (
+        {printImage ? (
           <img
-            src={exercise.image_path}
+            src={printImage}
             alt={exercise.title}
             className="w-full h-full object-contain"
           />
@@ -118,7 +122,7 @@ export const PrintExerciseA4: React.FC<PrintExerciseA4Props> = ({ exercise }) =>
 
       {/* 4. Footer */}
       <footer className="border-t border-slate-300 pt-2 mt-2 text-[8pt] text-slate-500 flex justify-between items-center">
-        <span>RadballHub Trainingsplattform – Ausgedruckt für den Hallenbetrieb</span>
+        <span>RadballHub – Ausgedruckt für den Hallenbetrieb</span>
         <span>DIN A4 – Seite 1 von 1</span>
       </footer>
 

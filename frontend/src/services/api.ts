@@ -1,4 +1,4 @@
-import type { Exercise, AgeGroup, MuscleGroup } from '../types';
+import type { Exercise, AgeGroup, MuscleGroup, User } from '../types';
 
 export const INITIAL_AGE_GROUPS: AgeGroup[] = [
   { id: 1, code: 'beginner', label: 'Anfänger', sort_order: 10 },
@@ -198,3 +198,122 @@ export const INITIAL_EXERCISES: Exercise[] = [
     ],
   },
 ];
+
+const API_BASE = '/api';
+
+export async function fetchExercisesApi(): Promise<Exercise[]> {
+  try {
+    const res = await fetch(`${API_BASE}/exercises`);
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.exercises)) {
+      return data.exercises;
+    }
+  } catch {
+    // Fallback auf lokale Demo-Daten bei fehlender API-Verbindung
+  }
+  return INITIAL_EXERCISES;
+}
+
+export async function submitExerciseApi(formData: FormData): Promise<{ success: boolean; message: string; id?: number }> {
+  const res = await fetch(`${API_BASE}/exercises`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Fehler beim Einreichen der Übung');
+  }
+  return data;
+}
+
+// -------------------------------------------------------------
+// Authentifizierung & Benutzerverwaltung API
+// -------------------------------------------------------------
+export async function authMeApi(): Promise<User | null> {
+  try {
+    const res = await fetch(`${API_BASE}/auth?action=me`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.success && data.user ? data.user : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function authLoginApi(login: string, password: string): Promise<User> {
+  const res = await fetch(`${API_BASE}/auth?action=login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login, password }),
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Ungültige Anmeldedaten');
+  }
+  return data.user;
+}
+
+export async function authRegisterApi(name: string, email: string, password: string): Promise<User> {
+  const res = await fetch(`${API_BASE}/auth?action=register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Registrierung fehlgeschlagen');
+  }
+  return data.user;
+}
+
+export async function authLogoutApi(): Promise<void> {
+  await fetch(`${API_BASE}/auth?action=logout`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+}
+
+export async function adminGetUsersApi(): Promise<User[]> {
+  const res = await fetch(`${API_BASE}/auth?action=users`, {
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Benutzer konnten nicht geladen werden');
+  }
+  return data.users;
+}
+
+export async function adminUpdateUserRoleApi(userId: number, role: string, isActive: boolean = true): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth?action=update_role`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, role, is_active: isActive }),
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Rolle konnte nicht aktualisiert werden');
+  }
+}
+
+export async function adminImportBackupApi(file: File): Promise<{ success: boolean; message: string; imported: number }> {
+  const formData = new FormData();
+  formData.append('backup_file', file);
+  const res = await fetch(`${API_BASE}/admin/import-backup`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Import der Datensicherung fehlgeschlagen');
+  }
+  return data;
+}

@@ -55,10 +55,17 @@ try {
             handleFeedbackRoute($method, $requestData);
             break;
 
+        case 'auth':
+            require_once __DIR__ . '/auth.php';
+            break;
+
         case 'admin':
             if ($subResource === 'export-zip') {
                 require_once __DIR__ . '/export.php';
                 handleExportZip();
+            } elseif ($subResource === 'import-backup') {
+                require_once __DIR__ . '/export.php';
+                handleImportBackup($requestData);
             } else {
                 jsonError('Unbekannte Admin-Aktion', 404);
             }

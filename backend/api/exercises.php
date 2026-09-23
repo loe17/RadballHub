@@ -134,18 +134,102 @@ function handleExercisesRoute(string $method, ?string $idOrAction, ?string $subA
         $description = trim($data['description'] ?? '');
         $authorName = trim($data['author_name'] ?? '') ?: null; // Optionaler Autor
         $videoUrl = trim($data['video_url'] ?? '') ?: null;
-        $userId = (int)($data['user_id'] ?? 1); // Aus Auth-Session
+
+        $authUser = getAuthenticatedUser();
+        $userId = $authUser ? $authUser['id'] : (int)($data['user_id'] ?? 1);
+        $status = ($authUser && $authUser['role'] === 'admin') ? 'approved' : 'pending_review';
 
         if (empty($title) || empty($category) || empty($description)) {
             jsonError('Titel, Kategorie und Beschreibung sind Pflichtfelder', 422);
         }
 
-        // WebP-Bildupload verarbeiten
-        $imagePath = null;
-        if (!empty($_FILES['image'])) {
+        if (!in_array($category, ['technik', 'taktik', 'kondition', 'ausdauer', 'home_workout', 'zirkel'], true)) {
+            jsonError('Ungültige Kategorie angegeben', 422);
+        }
+
+        // WebP-Bilduploads verarbeiten
+        $mediaList = [];
+        $primaryImagePath = null;
+
+        // Einzelnes Hauptbild (Fallback / klassisch)
+        if (!empty($_FILES['image']) && is_uploaded_file($_FILES['image']['tmp_name'])) {
             $filename = convertAndSaveWebP($_FILES['image'], UPLOAD_DIR);
             if ($filename) {
-                $imagePath = PUBLIC_UPLOAD_URI . $filename;
+                $primaryImagePath = PUBLIC_UPLOAD_URI . $filename;
+                $mediaList[] = [
+                    'type'       => 'image',
+                    'url'        => $primaryImagePath,
+                    'sort_order' => 0,
+                ];
+            }
+        }
+
+        // Mehrfache Bilder verarbeiten falls vorhanden
+        if (!empty($_FILES['images']) && is_array($_FILES['images']['name'])) {
+            $numFiles = count($_FILES['images']['name']);
+            for ($i = 0; $i < $numFiles; $i++) {
+                if (!empty($_FILES['images']['tmp_name'][$i]) && is_uploaded_file($_FILES['images']['tmp_name'][$i])) {
+                    $fileItem = [
+                        'name'     => $_FILES['images']['name'][$i],
+                        'type'     => $_FILES['images']['type'][$i],
+                        'tmp_name' => $_FILES['images']['tmp_name'][$i],
+                        'error'    => $_FILES['images']['error'][$i],
+                        'size'     => $_FILES['images']['size'][$i],
+                    ];
+                    $fn = convertAndSaveWebP($fileItem, UPLOAD_DIR);
+                    if ($fn) {
+                        $p = PUBLIC_UPLOAD_URI . $fn;
+                        if (!$primaryImagePath) {
+                            $primaryImagePath = $p;
+                        }
+                        $mediaList[] = [
+                            'type'       => 'image',
+                            'url'        => $p,
+                            'sort_order' => count($mediaList),
+                        ];
+                    }
+                }
+            }
+        }
+
+        // Videos verarbeiten (einzeln oder mehrere)
+        if (!empty($data['videos'])) {
+            $videos = is_array($data['videos']) ? $data['videos'] : json_decode($data['videos'], true);
+            if (is_array($videos)) {
+                foreach ($videos as $vUrl) {
+                    $vUrl = trim($vUrl);
+                    if ($vUrl) {
+                        $mediaList[] = [
+                            'type'       => 'video',
+                            'url'        => $vUrl,
+                            'sort_order' => count($mediaList),
+                        ];
+                    }
+                }
+            }
+        } elseif ($videoUrl) {
+            $mediaList[] = [
+                'type'       => 'video',
+                'url'        => $videoUrl,
+                'sort_order' => count($mediaList),
+            ];
+        }
+
+        // Medien-Reihenfolge anpassen falls vom Client übergeben
+        if (!empty($data['media_order'])) {
+            $orderMap = is_array($data['media_order']) ? $data['media_order'] : json_decode($data['media_order'], true);
+            if (is_array($orderMap)) {
+                foreach ($mediaList as &$mItem) {
+                    if (isset($orderMap[$mItem['url']])) {
+                        $mItem['sort_order'] = (int)$orderMap[$mItem['url']];
+                    }
+                }
+                unset($mItem);
+                usort($mediaList, fn($a, $b) => $a['sort_order'] <=> $b['sort_order']);
+                // Das erste Element nach Sortierung bestimmt das Thumbnail
+                if (!empty($mediaList) && $mediaList[0]['type'] === 'image') {
+                    $primaryImagePath = $mediaList[0]['url'];
+                }
             }
         }
 
@@ -157,13 +241,22 @@ function handleExercisesRoute(string $method, ?string $idOrAction, ?string $subA
                 INSERT INTO exercises (
                     title, slug, author_name, category, duration_minutes, material, 
                     description, image_path, video_url, status, created_by_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $title, $slug, $authorName, $category, $durationMinutes, 
-                $material, $description, $imagePath, $videoUrl, $userId
+                $material, $description, $primaryImagePath, $videoUrl, $status, $userId
             ]);
             $exerciseId = (int)$db->lastInsertId();
+
+            // Medien in exercise_media speichern
+            $stmtMedia = $db->prepare("
+                INSERT INTO exercise_media (exercise_id, type, url, sort_order)
+                VALUES (?, ?, ?, ?)
+            ");
+            foreach ($mediaList as $idx => $m) {
+                $stmtMedia->execute([$exerciseId, $m['type'], $m['url'], $m['sort_order'] ?? $idx]);
+            }
 
             // Zirkel-Metadaten speichern falls Kategorie Zirkel
             if ($category === 'zirkel' && !empty($data['circuit'])) {
@@ -204,12 +297,14 @@ function handleExercisesRoute(string $method, ?string $idOrAction, ?string $subA
 
             $db->commit();
 
-            // Admin per Mail über neue Einreichung informieren
-            sendAdminNewSubmissionEmail($title, $exerciseId, $authorName);
+            // Admin per Mail über neue Einreichung informieren (falls pending)
+            if ($status === 'pending_review') {
+                sendAdminNewSubmissionEmail($title, $exerciseId, $authorName);
+            }
 
             jsonResponse([
                 'success' => true,
-                'message' => 'Übung erfolgreich eingereicht! Sie befindet sich nun in Moderation.',
+                'message' => $status === 'approved' ? 'Übung erfolgreich gespeichert und veröffentlicht!' : 'Übung erfolgreich eingereicht! Sie befindet sich nun in Moderation.',
                 'id'      => $exerciseId,
             ], 201);
         } catch (\Throwable $t) {
@@ -272,6 +367,38 @@ function formatExerciseRow(PDO $db, array $row): array {
         ];
     }
 
+    // Medien abrufen (Bilder & Videos)
+    $stmtMedia = $db->prepare("
+        SELECT id, type, url, sort_order, caption
+        FROM exercise_media
+        WHERE exercise_id = ?
+        ORDER BY sort_order ASC, id ASC
+    ");
+    $stmtMedia->execute([$id]);
+    $media = $stmtMedia->fetchAll();
+
+    // Fallback: Falls noch keine Einträge in exercise_media existieren
+    if (empty($media)) {
+        if (!empty($row['image_path'])) {
+            $media[] = [
+                'id'         => 0,
+                'type'       => 'image',
+                'url'        => $row['image_path'],
+                'sort_order' => 0,
+                'caption'    => null,
+            ];
+        }
+        if (!empty($row['video_url'])) {
+            $media[] = [
+                'id'         => 0,
+                'type'       => 'video',
+                'url'        => $row['video_url'],
+                'sort_order' => 1,
+                'caption'    => null,
+            ];
+        }
+    }
+
     return [
         'id'               => $id,
         'title'            => $row['title'],
@@ -283,6 +410,7 @@ function formatExerciseRow(PDO $db, array $row): array {
         'description'      => $row['description'],
         'image_path'       => $row['image_path'],
         'video_url'        => $row['video_url'],
+        'media'            => $media,
         'status'           => $row['status'],
         'created_at'       => $row['created_at'],
         'circuit'          => $circuit,

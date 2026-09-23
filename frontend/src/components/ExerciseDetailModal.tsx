@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   X, 
   Clock, 
@@ -6,9 +6,8 @@ import {
   Printer, 
   Plus, 
   Check, 
-  MessageSquare, 
   Zap, 
-  Send 
+  Video 
 } from 'lucide-react';
 import type { Exercise } from '../types';
 import { useTrainingPlanStore } from '../store/useTrainingPlanStore';
@@ -29,25 +28,31 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   const addExercise = useTrainingPlanStore((state) => state.addExercise);
   const items = useTrainingPlanStore((state) => state.items);
 
-  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
-  const [feedbackText, setFeedbackText] = React.useState('');
-  const [feedbackSubmitted, setFeedbackSubmitted] = React.useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
 
   if (!isOpen || !exercise) return null;
 
   const isInPlan = items.some((item) => item.exercise.id === exercise.id);
 
-  const handleSubmitFeedback = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!feedbackText.trim()) return;
+  // Medien-Liste vorbereiten (entweder aus exercise.media oder Fallbacks)
+  const mediaItems = (exercise.media && exercise.media.length > 0)
+    ? exercise.media
+    : [
+        ...(exercise.image_path ? [{ id: 1, type: 'image' as const, url: exercise.image_path, sort_order: 0 }] : []),
+        ...(exercise.video_url ? [{ id: 2, type: 'video' as const, url: exercise.video_url, sort_order: 1 }] : [])
+      ];
 
-    // Simulation / API-Trigger
-    setFeedbackSubmitted(true);
-    setTimeout(() => {
-      setFeedbackSubmitted(false);
-      setFeedbackOpen(false);
-      setFeedbackText('');
-    }, 2000);
+  const currentMedia = mediaItems[activeMediaIndex] || mediaItems[0] || null;
+
+  // Hilfsfunktion: YouTube URLs in Embed-URLs konvertieren
+  const getEmbedUrl = (url: string) => {
+    if (url.includes('youtube.com/watch?v=')) {
+      return url.replace('youtube.com/watch?v=', 'youtube.com/embed/');
+    }
+    if (url.includes('youtu.be/')) {
+      return url.replace('youtu.be/', 'youtube.com/embed/');
+    }
+    return url;
   };
 
   return (
@@ -87,30 +92,65 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
         </div>
 
         {/* Scrollbarer Hauptinhalt */}
-        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+        <div className="p-6 max-h-[72vh] overflow-y-auto space-y-6">
           
-          {/* Bild oder Video */}
-          <div className="w-full rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60">
-            {exercise.video_url ? (
-              <div className="aspect-video w-full">
-                <iframe
-                  src={exercise.video_url}
-                  title={exercise.title}
-                  className="w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+          {/* Medien-Galerie */}
+          {currentMedia && (
+            <div className="space-y-2">
+              <div className="w-full rounded-2xl overflow-hidden bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center">
+                {currentMedia.type === 'video' ? (
+                  <div className="aspect-video w-full">
+                    <iframe
+                      src={getEmbedUrl(currentMedia.url)}
+                      title={exercise.title}
+                      className="w-full h-full border-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                ) : (
+                  <div className="max-h-80 w-full flex items-center justify-center">
+                    <img
+                      src={currentMedia.url}
+                      alt={exercise.title}
+                      className="max-h-80 w-full object-contain"
+                    />
+                  </div>
+                )}
               </div>
-            ) : exercise.image_path ? (
-              <div className="max-h-80 w-full flex items-center justify-center bg-slate-950">
-                <img
-                  src={exercise.image_path}
-                  alt={exercise.title}
-                  className="max-h-80 w-full object-contain"
-                />
-              </div>
-            ) : null}
-          </div>
+
+              {/* Galerie-Vorschaubilder falls mehrere Medien existieren */}
+              {mediaItems.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1 pt-1">
+                  {mediaItems.map((m, idx) => (
+                    <button
+                      key={m.id || idx}
+                      type="button"
+                      onClick={() => setActiveMediaIndex(idx)}
+                      className={`relative w-16 h-16 rounded-xl overflow-hidden shrink-0 border-2 transition-all ${
+                        activeMediaIndex === idx
+                          ? 'border-blue-600 scale-105 shadow-md'
+                          : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      {m.type === 'image' ? (
+                        <img src={m.url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-800 text-white flex items-center justify-center">
+                          <Video className="w-5 h-5 text-red-400" />
+                        </div>
+                      )}
+                      {idx === 0 && (
+                        <span className="absolute bottom-0 inset-x-0 bg-blue-600 text-[8px] text-white font-bold text-center">
+                          Titel
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Ablauf & Durchführung */}
           <div>
@@ -178,122 +218,61 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
 
           {/* Zirkel-Box falls vorhanden */}
           {exercise.circuit && (
-            <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-300 flex items-center gap-1 mb-2">
-                <Zap className="w-4 h-4" />
-                Zirkel-Metadaten
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-xs">
-                  <span className="block text-[11px] text-slate-500">Belastung</span>
-                  <strong className="text-sm font-bold text-slate-900 dark:text-white">{exercise.circuit.work_duration_seconds}s</strong>
+            <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-purple-900 dark:text-purple-300 mb-2">
+                <Zap className="w-4 h-4 text-purple-600" />
+                Zirkel-Parameter: {exercise.circuit.station_number || 'Station'}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="bg-white/80 dark:bg-slate-900/60 p-2 rounded-lg text-center">
+                  <span className="block text-slate-400 text-[10px]">Belastung</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">
+                    {exercise.circuit.work_duration_seconds} Sek.
+                  </span>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-xs">
-                  <span className="block text-[11px] text-slate-500">Pause</span>
-                  <strong className="text-sm font-bold text-slate-900 dark:text-white">{exercise.circuit.pause_duration_seconds}s</strong>
+                <div className="bg-white/80 dark:bg-slate-900/60 p-2 rounded-lg text-center">
+                  <span className="block text-slate-400 text-[10px]">Pause</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">
+                    {exercise.circuit.pause_duration_seconds} Sek.
+                  </span>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-xs">
-                  <span className="block text-[11px] text-slate-500">Runden</span>
-                  <strong className="text-sm font-bold text-slate-900 dark:text-white">{exercise.circuit.rounds}x</strong>
-                </div>
-                <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-xs">
-                  <span className="block text-[11px] text-slate-500">Station</span>
-                  <strong className="text-sm font-bold text-slate-900 dark:text-white">{exercise.circuit.station_number || '-'}</strong>
+                <div className="bg-white/80 dark:bg-slate-900/60 p-2 rounded-lg text-center">
+                  <span className="block text-slate-400 text-[10px]">Runden</span>
+                  <span className="font-extrabold text-slate-900 dark:text-white">
+                    {exercise.circuit.rounds}x
+                  </span>
                 </div>
               </div>
-              {exercise.circuit.setup_notes && (
-                <p className="mt-2 text-xs text-purple-800 dark:text-purple-300">
-                  <strong>Aufbauhinweis:</strong> {exercise.circuit.setup_notes}
-                </p>
-              )}
             </div>
           )}
 
-          {/* Feedback-Formular Toggle */}
-          <div className="pt-2">
-            {!feedbackOpen ? (
-              <button
-                onClick={() => setFeedbackOpen(true)}
-                className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1.5 transition-colors"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                Änderungshinweis oder Feedback zu dieser Übung mitteilen
-              </button>
-            ) : (
-              <form onSubmit={handleSubmitFeedback} className="bg-slate-50 dark:bg-slate-800/70 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                <div className="flex justify-between items-center">
-                  <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                    Feedback / Korrekturvorschlag für die Moderation
-                  </h5>
-                  <button
-                    type="button"
-                    onClick={() => setFeedbackOpen(false)}
-                    className="text-xs text-slate-400 hover:text-slate-600"
-                  >
-                    Abbrechen
-                  </button>
-                </div>
-
-                <textarea
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value)}
-                  placeholder="Beschreibe deinen Änderungsvorschlag oder melde Fehler (z. B. fehlendes Material, unklare Beschreibung)..."
-                  rows={3}
-                  className="w-full text-xs p-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-hidden focus:border-blue-500"
-                  required
-                />
-
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Hinweis senden
-                  </button>
-                </div>
-
-                {feedbackSubmitted && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                    Vielen Dank! Dein Feedback wurde an den Moderator übermittelt.
-                  </p>
-                )}
-              </form>
-            )}
-          </div>
-
         </div>
 
-        {/* Footer Aktionen */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between gap-3">
+        {/* Footer-Aktionen */}
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between">
           <button
             onClick={() => onPrintA4(exercise)}
-            className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold transition-all shadow-xs"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           >
             <Printer className="w-4 h-4" />
-            Als DIN-A4 Seite drucken
+            DIN-A4 Druckblatt
           </button>
 
           <button
-            onClick={() => {
-              addExercise(exercise);
-              onClose();
-            }}
-            className={`flex items-center gap-1.5 py-2.5 px-5 rounded-xl font-bold text-xs transition-all shadow-md shadow-blue-500/20 active:scale-95 ${
+            onClick={() => addExercise(exercise)}
+            className={`flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 ${
               isInPlan
-                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
             }`}
           >
             {isInPlan ? (
               <>
-                <Check className="w-4 h-4" />
-                Im Plan ({items.filter(i => i.exercise.id === exercise.id).length}x)
+                <Check className="w-4 h-4" /> Bereits im Trainingsplan
               </>
             ) : (
               <>
-                <Plus className="w-4 h-4" />
-                Zum Trainingsplan hinzufügen
+                <Plus className="w-4 h-4" /> Zum Trainingsplan hinzufügen
               </>
             )}
           </button>
